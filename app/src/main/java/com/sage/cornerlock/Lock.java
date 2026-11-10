@@ -15,6 +15,12 @@ final class Lock {
     static final long DURATION_MS = 24L * 60 * 60 * 1000;
     static final int MAX_IMAGES = 4;
 
+    /** Built-in icons, one per corner, clockwise from top-left. */
+    private static final int[] DEFAULTS = {
+            R.drawable.default_corner1, R.drawable.default_corner2,
+            R.drawable.default_corner3, R.drawable.default_corner4
+    };
+
     static final String[] SIZE_NAMES = {"Small", "Medium", "Large"};
     static final int[] SIZE_DP = {40, 56, 72};
 
@@ -79,8 +85,9 @@ final class Lock {
             Drawable d = decode(ImageDecoder.createSource(imageFile(c, corner % n)), sizePx);
             if (d != null) return d;
         }
-        Drawable d = decode(ImageDecoder.createSource(c.getResources(), R.drawable.default_corner), sizePx);
-        return d != null ? d : c.getDrawable(R.drawable.default_corner);
+        int res = DEFAULTS[corner % DEFAULTS.length];
+        Drawable d = decode(ImageDecoder.createSource(c.getResources(), res), sizePx);
+        return d != null ? d : c.getDrawable(res);
     }
 
     static Drawable decode(ImageDecoder.Source src, int sizePx) {

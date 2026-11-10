@@ -3,7 +3,7 @@
 Press one button and a small image appears in all four corners of your screen.
 It stays for 24 hours, works fully offline, and can't be turned off from the app until the time is up.
 
-The default image is a compass star. Before locking you can pick 1 to 4 images of your own:
+The default is four round icons, one per corner (clockwise from top-left): the Holy Face, the Mother of God with the Child, the Orthodox cross, and St John the Baptist. Before locking you can pick your own: pick 1 to 4 images of your own:
 1 image goes in every corner, 2 sit on opposite diagonals, 4 get one corner each (clockwise from top-left).
 Animated images move: GIF works on both phone and PC, animated WebP on the phone only.
 
@@ -40,7 +40,7 @@ Notes
 
 ## Windows
 
-1. Keep `CornerLock.bat`, `CornerLock.ps1` and `image.gif` together in one folder. `image.gif` is the default: the Holy Face icon with eyes that look around. On the PC the corners are a bit bigger than on the phone.
+1. Keep `CornerLock.bat`, `CornerLock.ps1` and the four `corner*.png` icons together in one folder. On the PC the corners are a bit bigger than on the phone.
 2. Double-click `CornerLock.bat`.
 3. "Choose image..." (optional), then "Lock for 24 hours".
 

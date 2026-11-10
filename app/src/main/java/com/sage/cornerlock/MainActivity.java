@@ -175,7 +175,7 @@ public class MainActivity extends Activity {
         float d = getResources().getDisplayMetrics().density;
         int px = Math.round(Lock.SIZE_DP[sel] * d);
         int gap = Math.round(6 * d);
-        int shown = Math.max(1, n);
+        int shown = n > 0 ? n : Lock.MAX_IMAGES;   // no pick yet: show the four built-in icons
         for (int i = 0; i < shown; i++) {
             ImageView iv = new ImageView(this);
             iv.setScaleType(ImageView.ScaleType.FIT_CENTER);

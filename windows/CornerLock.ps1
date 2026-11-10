@@ -382,9 +382,10 @@ if ($until -ne $null -and $until -gt [datetime]::UtcNow) {
 $here = Split-Path -Parent $PSCommandPath
 $script:chosen = New-Object 'System.Collections.Generic.List[byte[]]'
 $script:streams = New-Object System.Collections.ArrayList   # GIF previews need their streams kept open
-$defaultImage = Join-Path $here 'image.gif'
-if (-not (Test-Path $defaultImage)) { $defaultImage = Join-Path $here 'image.png' }
-if (Test-Path $defaultImage) { $script:chosen.Add([IO.File]::ReadAllBytes($defaultImage)) }
+# Default: the four icons that ship next to this script (corner1..corner4), clockwise from top-left.
+$defaults = @(Get-ChildItem -LiteralPath $here -Filter 'corner*.png' -ErrorAction SilentlyContinue |
+              Sort-Object Name | Select-Object -First $MaxImages)
+foreach ($f in $defaults) { $script:chosen.Add([IO.File]::ReadAllBytes($f.FullName)) }
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form = New-Object System.Windows.Forms.Form
