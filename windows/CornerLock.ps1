@@ -1,17 +1,17 @@
 # Corner Lock for Windows
-# Double-click CornerLock.bat to open. Pick an image, press "Lock for 24 hours".
-# The image then sits in all four corners of every screen, click-through,
-# and is relaunched every minute (also after a restart) until 24 hours have passed.
+# Double-click CornerLock.bat to open. Pick 1 to 4 images (animated GIFs move), press "Lock for 24 hours".
+# The images then sit in the four corners of every screen, click-through,
+# and are relaunched every minute (also after a restart) until 24 hours have passed.
 
 param([switch]$Overlay)
 
 $AppDir   = Join-Path $env:LOCALAPPDATA 'CornerLock'
 $LockFile = Join-Path $AppDir 'until.txt'
-$ImgFile  = Join-Path $AppDir 'image.png'
 $Script   = Join-Path $AppDir 'CornerLock.ps1'
 $Vbs      = Join-Path $AppDir 'run-overlay.vbs'
 $TaskName = 'CornerLock'
 $Hours    = 24
+$MaxImages = 4
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -25,11 +25,6 @@ function Get-LockUntil {
     } catch { return $null }
 }
 
-function Test-Locked {
-    $u = Get-LockUntil
-    return ($u -ne $null -and $u -gt [datetime]::UtcNow)
-}
-
 function Remove-Lock {
     Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $LockFile -Force -ErrorAction SilentlyContinue
@@ -39,13 +34,9 @@ function Start-Overlay {
     Start-Process -FilePath 'wscript.exe' -ArgumentList "`"$Vbs`""
 }
 
-function Read-ImageNoLock([string]$path) {
-    $bytes = [IO.File]::ReadAllBytes($path)
-    $ms = New-Object IO.MemoryStream(,$bytes)
-    $img = [System.Drawing.Image]::FromStream($ms)
-    $copy = New-Object System.Drawing.Bitmap($img)
-    $img.Dispose(); $ms.Dispose()
-    return $copy
+function Get-SavedImages {
+    return @(Get-ChildItem -LiteralPath $AppDir -Filter 'image*.dat' -ErrorAction SilentlyContinue |
+             Sort-Object Name | ForEach-Object { $_.FullName })
 }
 
 function Format-Left([datetime]$untilUtc) {
@@ -140,6 +131,22 @@ namespace CornerLock
         }
     }
 
+    /// <summary>Frames of one image (a still image has one frame), with per-frame delays in ms.</summary>
+    public class Anim
+    {
+        public List<Bitmap> Frames = new List<Bitmap>();
+        public List<int> Delays = new List<int>();
+    }
+
+    public class Corner
+    {
+        public CornerForm Form;
+        public Anim Anim;
+        public Point Pos;
+        public int Frame;
+        public int Due;
+    }
+
     public static class Overlay
     {
         [DllImport("user32.dll")] static extern bool SetProcessDPIAware();
@@ -148,18 +155,33 @@ namespace CornerLock
         static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
 
-        static readonly List<CornerForm> forms = new List<CornerForm>();
-        static Bitmap source;
+        const int SourceMaxPx = 192;   // frames are kept at most this big
+        const int MaxFrames = 200;
+
+        static readonly List<Corner> corners = new List<Corner>();
+        static readonly Dictionary<string, Anim> scaledCache = new Dictionary<string, Anim>();
+        static List<Anim> sources;
         static string layout;
         static long untilTicks;
 
-        public static void Run(string imagePath, long untilUtcTicks)
+        public static void Run(string[] imagePaths, long untilUtcTicks)
         {
             SetProcessDPIAware();
             untilTicks = untilUtcTicks;
-            source = LoadImage(imagePath);
+            sources = new List<Anim>();
+            if (imagePaths != null)
+            {
+                foreach (string p in imagePaths)
+                {
+                    Anim a = LoadAnim(p);
+                    if (a != null && a.Frames.Count > 0) sources.Add(a);
+                    if (sources.Count == 4) break;
+                }
+            }
+            if (sources.Count == 0) sources.Add(FallbackAnim());
             Build();
 
+            // Housekeeping: end of lock, screen changes, stay on top.
             Timer t = new Timer();
             t.Interval = 2000;
             t.Tick += delegate
@@ -172,26 +194,74 @@ namespace CornerLock
                     return;
                 }
                 if (Layout() != layout) { Build(); return; }
-                foreach (CornerForm f in forms)
-                    SetWindowPos(f.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                foreach (Corner c in corners)
+                    SetWindowPos(c.Form.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             };
             t.Start();
+
+            // Animation: each corner advances on its own GIF timing.
+            Timer anim = new Timer();
+            anim.Interval = 30;
+            anim.Tick += delegate { Animate(); };
+            anim.Start();
+
             Application.Run();
         }
 
-        static Bitmap LoadImage(string path)
+        static void Animate()
         {
-            if (File.Exists(path))
+            int now = Environment.TickCount;
+            foreach (Corner c in corners)
             {
-                try
+                int n = c.Anim.Frames.Count;
+                if (n < 2 || unchecked(now - c.Due) < 0) continue;
+                int guard = 0;
+                while (unchecked(now - c.Due) >= 0 && guard++ < n)
                 {
-                    using (MemoryStream ms = new MemoryStream(File.ReadAllBytes(path)))
-                    using (Image img = Image.FromStream(ms))
-                        return new Bitmap(img);
+                    c.Frame = (c.Frame + 1) % n;
+                    c.Due = unchecked(c.Due + c.Anim.Delays[c.Frame]);
                 }
-                catch { }
+                if (unchecked(now - c.Due) >= 0) c.Due = unchecked(now + c.Anim.Delays[c.Frame]);
+                c.Form.SetBitmap(c.Anim.Frames[c.Frame], c.Pos.X, c.Pos.Y);
             }
-            // Fallback: a plain white dot with a dark ring.
+        }
+
+        static Anim LoadAnim(string path)
+        {
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(path);
+                using (MemoryStream ms = new MemoryStream(bytes))
+                using (Image img = Image.FromStream(ms))
+                {
+                    Anim a = new Anim();
+                    int n = 1;
+                    try { n = img.GetFrameCount(FrameDimension.Time); } catch { n = 1; }
+                    if (n < 1) n = 1;
+                    byte[] delays = null;
+                    if (n > 1) { try { delays = img.GetPropertyItem(0x5100).Value; } catch { delays = null; } }
+                    int count = Math.Min(n, MaxFrames);
+                    for (int i = 0; i < count; i++)
+                    {
+                        if (n > 1) img.SelectActiveFrame(FrameDimension.Time, i);
+                        a.Frames.Add(Fit(img, SourceMaxPx, false));
+                        int d = 100;
+                        if (delays != null && delays.Length >= (i + 1) * 4)
+                        {
+                            d = BitConverter.ToInt32(delays, i * 4) * 10;
+                            if (d < 20) d = 100;   // same rule browsers use for "as fast as possible" GIFs
+                        }
+                        a.Delays.Add(d);
+                    }
+                    return a;
+                }
+            }
+            catch { return null; }
+        }
+
+        static Anim FallbackAnim()
+        {
+            // A plain white dot with a dark ring.
             Bitmap b = new Bitmap(64, 64, PixelFormat.Format32bppArgb);
             using (Graphics g = Graphics.FromImage(b))
             {
@@ -199,7 +269,10 @@ namespace CornerLock
                 g.FillEllipse(Brushes.Black, 4, 4, 56, 56);
                 g.FillEllipse(Brushes.White, 10, 10, 44, 44);
             }
-            return b;
+            Anim a = new Anim();
+            a.Frames.Add(b);
+            a.Delays.Add(1000);
+            return a;
         }
 
         static string Layout()
@@ -209,9 +282,10 @@ namespace CornerLock
             return s;
         }
 
-        static Bitmap Fit(Bitmap src, int box)
+        static Bitmap Fit(Image src, int box, bool allowUpscale)
         {
             double k = Math.Min((double)box / src.Width, (double)box / src.Height);
+            if (!allowUpscale && k > 1) k = 1;
             int w = Math.Max(1, (int)Math.Round(src.Width * k));
             int h = Math.Max(1, (int)Math.Round(src.Height * k));
             Bitmap b = new Bitmap(w, h, PixelFormat.Format32bppArgb);
@@ -225,37 +299,64 @@ namespace CornerLock
             return b;
         }
 
+        static Anim Scaled(int sourceIndex, int box)
+        {
+            string key = sourceIndex + ":" + box;
+            Anim cached;
+            if (scaledCache.TryGetValue(key, out cached)) return cached;
+            Anim src = sources[sourceIndex];
+            Anim a = new Anim();
+            for (int i = 0; i < src.Frames.Count; i++)
+            {
+                a.Frames.Add(Fit(src.Frames[i], box, true));
+                a.Delays.Add(src.Delays[i]);
+            }
+            scaledCache[key] = a;
+            return a;
+        }
+
         static void Clear()
         {
-            foreach (CornerForm f in forms) { f.Close(); f.Dispose(); }
-            forms.Clear();
+            foreach (Corner c in corners) { c.Form.Close(); c.Form.Dispose(); }
+            corners.Clear();
+            foreach (Anim a in scaledCache.Values)
+                foreach (Bitmap b in a.Frames) b.Dispose();
+            scaledCache.Clear();
         }
 
         static void Build()
         {
             Clear();
             layout = Layout();
+            int now = Environment.TickCount;
             foreach (Screen sc in Screen.AllScreens)
             {
                 Rectangle r = sc.Bounds;
                 int box = Math.Max(32, (int)Math.Round(r.Height * 0.045));   // about 48 px on a 1080p screen
                 int m = Math.Max(6, box / 6);
-                using (Bitmap bmp = Fit(source, box))
+                // Clockwise from top-left, so with 2 images each pair sits on a diagonal.
+                for (int k = 0; k < 4; k++)
                 {
-                    Point[] pts = {
-                        new Point(r.Left + m, r.Top + m),
-                        new Point(r.Right - m - bmp.Width, r.Top + m),
-                        new Point(r.Left + m, r.Bottom - m - bmp.Height),
-                        new Point(r.Right - m - bmp.Width, r.Bottom - m - bmp.Height)
-                    };
-                    foreach (Point p in pts)
-                    {
-                        CornerForm f = new CornerForm();
-                        f.Bounds = new Rectangle(p, bmp.Size);
-                        f.Show();
-                        f.SetBitmap(bmp, p.X, p.Y);
-                        forms.Add(f);
-                    }
+                    Anim a = Scaled(k % sources.Count, box);
+                    Size s = a.Frames[0].Size;
+                    Point p;
+                    if (k == 0) p = new Point(r.Left + m, r.Top + m);
+                    else if (k == 1) p = new Point(r.Right - m - s.Width, r.Top + m);
+                    else if (k == 2) p = new Point(r.Right - m - s.Width, r.Bottom - m - s.Height);
+                    else p = new Point(r.Left + m, r.Bottom - m - s.Height);
+
+                    CornerForm f = new CornerForm();
+                    f.Bounds = new Rectangle(p, s);
+                    f.Show();
+                    f.SetBitmap(a.Frames[0], p.X, p.Y);
+
+                    Corner c = new Corner();
+                    c.Form = f;
+                    c.Anim = a;
+                    c.Pos = p;
+                    c.Frame = 0;
+                    c.Due = unchecked(now + a.Delays[0]);
+                    corners.Add(c);
                 }
             }
         }
@@ -263,7 +364,7 @@ namespace CornerLock
 }
 '@
 
-    [CornerLock.Overlay]::Run($ImgFile, $until.Ticks)
+    [CornerLock.Overlay]::Run([string[]](Get-SavedImages), $until.Ticks)
     Remove-Lock
     $mutex.ReleaseMutex()
     exit
@@ -279,63 +380,98 @@ if ($until -ne $null -and $until -gt [datetime]::UtcNow) {
 }
 
 $here = Split-Path -Parent $PSCommandPath
-$chosen = $null
-if (Test-Path (Join-Path $here 'image.png')) { $chosen = Join-Path $here 'image.png' }
+$script:chosen = New-Object 'System.Collections.Generic.List[byte[]]'
+$script:streams = New-Object System.Collections.ArrayList   # GIF previews need their streams kept open
+$defaultImage = Join-Path $here 'image.png'
+if (Test-Path $defaultImage) { $script:chosen.Add([IO.File]::ReadAllBytes($defaultImage)) }
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $form = New-Object System.Windows.Forms.Form
 $form.Text = 'Corner Lock'
-$form.ClientSize = New-Object System.Drawing.Size(320, 380)
+$form.ClientSize = New-Object System.Drawing.Size(340, 330)
 $form.FormBorderStyle = 'FixedDialog'
 $form.MaximizeBox = $false
 $form.StartPosition = 'CenterScreen'
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 10)
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = 'This image goes in all four corners of your screen for 24 hours.'
-$label.SetBounds(20, 15, 280, 45)
+$label.Text = "These go in the four corners of your screen for 24 hours.`nPick 1 image for all corners, or up to 4 (one per corner). Animated GIFs move."
+$label.SetBounds(20, 15, 300, 65)
 $form.Controls.Add($label)
 
-$pic = New-Object System.Windows.Forms.PictureBox
-$pic.SetBounds(85, 65, 150, 150)
-$pic.SizeMode = 'Zoom'
-if ($chosen) { $pic.Image = Read-ImageNoLock $chosen }
-$form.Controls.Add($pic)
+$slots = @()
+for ($i = 0; $i -lt $MaxImages; $i++) {
+    $pb = New-Object System.Windows.Forms.PictureBox
+    $pb.SetBounds(20 + $i * 78, 90, 70, 70)
+    $pb.SizeMode = 'Zoom'
+    $form.Controls.Add($pb)
+    $slots += $pb
+}
+
+function Show-Choice {
+    for ($i = 0; $i -lt $MaxImages; $i++) {
+        $pb = $slots[$i]
+        if ($i -lt $script:chosen.Count) {
+            $ms = New-Object IO.MemoryStream(,$script:chosen[$i])
+            [void]$script:streams.Add($ms)
+            $pb.Image = [System.Drawing.Image]::FromStream($ms)
+            $pb.Visible = $true
+        } else {
+            $pb.Image = $null
+            $pb.Visible = $false
+        }
+    }
+}
+Show-Choice
 
 $choose = New-Object System.Windows.Forms.Button
-$choose.Text = 'Choose image...'
-$choose.SetBounds(20, 230, 280, 40)
+$choose.Text = 'Choose images (1 to 4)...'
+$choose.SetBounds(20, 180, 300, 40)
 $choose.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
     $dlg.Filter = 'Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif'
-    if ($dlg.ShowDialog() -eq 'OK') {
+    $dlg.Multiselect = $true
+    if ($dlg.ShowDialog() -ne 'OK') { return }
+    $picked = New-Object 'System.Collections.Generic.List[byte[]]'
+    foreach ($f in ($dlg.FileNames | Select-Object -First $MaxImages)) {
         try {
-            $pic.Image = Read-ImageNoLock $dlg.FileName
-            $script:chosen = $dlg.FileName
+            $bytes = [IO.File]::ReadAllBytes($f)
+            $ms = New-Object IO.MemoryStream(,$bytes)
+            [System.Drawing.Image]::FromStream($ms).Dispose()   # just checks it opens
+            $ms.Dispose()
+            $picked.Add($bytes)
         } catch {
-            [System.Windows.Forms.MessageBox]::Show("Couldn't open that image.", 'Corner Lock') | Out-Null
+            [System.Windows.Forms.MessageBox]::Show("Couldn't open:`n$f", 'Corner Lock') | Out-Null
+            return
         }
+    }
+    if ($picked.Count -gt 0) {
+        $script:chosen = $picked
+        Show-Choice
     }
 })
 $form.Controls.Add($choose)
 
 $lock = New-Object System.Windows.Forms.Button
 $lock.Text = 'Lock for 24 hours'
-$lock.SetBounds(20, 280, 280, 48)
+$lock.SetBounds(20, 230, 300, 48)
 $lock.Font = New-Object System.Drawing.Font('Segoe UI', 11, [System.Drawing.FontStyle]::Bold)
 $lock.Add_Click({
-    if (-not $pic.Image) {
+    if ($script:chosen.Count -eq 0) {
         [System.Windows.Forms.MessageBox]::Show('Choose an image first.', 'Corner Lock') | Out-Null
         return
     }
     $answer = [System.Windows.Forms.MessageBox]::Show(
-        "The image will stay in your screen corners for 24 hours and comes back if closed.`n`nLock now?",
+        "The images will stay in your screen corners for 24 hours and come back if closed.`n`nLock now?",
         'Corner Lock', 'YesNo', 'Warning')
     if ($answer -ne 'Yes') { return }
 
     try {
         New-Item -ItemType Directory -Force -Path $AppDir | Out-Null
-        $pic.Image.Save($ImgFile, [System.Drawing.Imaging.ImageFormat]::Png)
+        Get-SavedImages | ForEach-Object { Remove-Item -LiteralPath $_ -Force }
+        for ($i = 0; $i -lt $script:chosen.Count; $i++) {
+            [IO.File]::WriteAllBytes((Join-Path $AppDir ('image{0}.dat' -f ($i + 1))), $script:chosen[$i])
+        }
         Copy-Item -LiteralPath $PSCommandPath -Destination $Script -Force
         $cmd = 'CreateObject("WScript.Shell").Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File ""' +
                $Script + '"" -Overlay", 0, False'

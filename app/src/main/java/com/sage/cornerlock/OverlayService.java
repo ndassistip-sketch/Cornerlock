@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
@@ -92,18 +91,19 @@ public class OverlayService extends Service {
     }
 
     private void addOverlays() {
-        Bitmap bmp = Lock.loadImage(this);
         float d = getResources().getDisplayMetrics().density;
         int size = Math.round(Lock.SIZE_DP[Lock.sizeIndex(this)] * d);
         int margin = Math.round(MARGIN_DP * d);
+        // Clockwise from top-left, so with 2 images each pair sits on a diagonal.
         int[] corners = {
                 Gravity.TOP | Gravity.LEFT, Gravity.TOP | Gravity.RIGHT,
-                Gravity.BOTTOM | Gravity.LEFT, Gravity.BOTTOM | Gravity.RIGHT
+                Gravity.BOTTOM | Gravity.RIGHT, Gravity.BOTTOM | Gravity.LEFT
         };
-        for (int g : corners) {
+        for (int k = 0; k < corners.length; k++) {
+            int g = corners[k];
             ImageView iv = new ImageView(this);
-            iv.setImageBitmap(bmp);
             iv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            iv.setImageDrawable(Lock.loadDrawable(this, k, size));
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     size, size,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,

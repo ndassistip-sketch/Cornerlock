@@ -3,7 +3,9 @@
 Press one button and a small image appears in all four corners of your screen.
 It stays for 24 hours, works fully offline, and can't be turned off from the app until the time is up.
 
-The default image is a compass star. You can pick any image of your own before locking.
+The default image is a compass star. Before locking you can pick 1 to 4 images of your own:
+1 image goes in every corner, 2 sit on opposite diagonals, 4 get one corner each (clockwise from top-left).
+Animated images move: GIF works on both phone and PC, animated WebP on the phone only.
 
 ---
 

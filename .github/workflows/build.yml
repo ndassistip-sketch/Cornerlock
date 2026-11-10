@@ -21,3 +21,24 @@ jobs:
         with:
           name: CornerLock-apk
           path: app/build/outputs/apk/debug/app-debug.apk
+
+  windows-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile overlay code and read an animated GIF
+        shell: powershell
+        run: |
+          $src = Get-Content windows/CornerLock.ps1 -Raw
+          $m = [regex]::Match($src, "(?s)-TypeDefinition @'\r?\n(.*?)\r?\n'@")
+          if (-not $m.Success) { throw 'C# block not found' }
+          Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition $m.Groups[1].Value
+          $flags = [Reflection.BindingFlags]'NonPublic, Static'
+          $load = [CornerLock.Overlay].GetMethod('LoadAnim', $flags)
+          $anim = $load.Invoke($null, @((Resolve-Path .github/test/pulse.gif).Path))
+          "frames: $($anim.Frames.Count), delays: $($anim.Delays -join ',')"
+          if ($anim.Frames.Count -ne 8) { throw 'Expected 8 frames' }
+          if ($anim.Delays[0] -ne 120) { throw 'Expected 120 ms delay' }
+          $still = $load.Invoke($null, @((Resolve-Path windows/image.png).Path))
+          if ($still.Frames.Count -ne 1) { throw 'Expected 1 frame for PNG' }
+          'OK'
