@@ -14,6 +14,16 @@ android {
         versionName '1.0'
     }
 
+    // Fixed key so new builds install as updates over old ones.
+    signingConfigs {
+        debug {
+            storeFile file('cornerlock.keystore')
+            storePassword 'cornerlock'
+            keyAlias 'cornerlock'
+            keyPassword 'cornerlock'
+        }
+    }
+
     buildTypes {
         release {
             minifyEnabled false

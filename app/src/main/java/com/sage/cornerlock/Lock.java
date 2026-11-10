@@ -37,6 +37,19 @@ final class Lock {
         prefs(c).edit().remove(KEY_UNTIL).commit();
     }
 
+    static final String[] SIZE_NAMES = {"Small", "Medium", "Large"};
+    static final int[] SIZE_DP = {40, 56, 72};
+    private static final String KEY_SIZE = "size";
+
+    static int sizeIndex(Context c) {
+        int i = prefs(c).getInt(KEY_SIZE, 1);
+        return (i >= 0 && i < SIZE_DP.length) ? i : 1;
+    }
+
+    static void setSizeIndex(Context c, int i) {
+        prefs(c).edit().putInt(KEY_SIZE, i).commit();
+    }
+
     static File imageFile(Context c) {
         return new File(c.getFilesDir(), "corner.png");
     }

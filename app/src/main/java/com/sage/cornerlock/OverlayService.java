@@ -28,8 +28,7 @@ import java.util.List;
 public class OverlayService extends Service {
     private static final String CHANNEL = "cornerlock";
     private static final int NOTIF_ID = 1;
-    private static final int SIZE_DP = 48;
-    private static final int MARGIN_DP = 14;
+    private static final int MARGIN_DP = 12;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final List<View> views = new ArrayList<>();
@@ -95,7 +94,7 @@ public class OverlayService extends Service {
     private void addOverlays() {
         Bitmap bmp = Lock.loadImage(this);
         float d = getResources().getDisplayMetrics().density;
-        int size = Math.round(SIZE_DP * d);
+        int size = Math.round(Lock.SIZE_DP[Lock.sizeIndex(this)] * d);
         int margin = Math.round(MARGIN_DP * d);
         int[] corners = {
                 Gravity.TOP | Gravity.LEFT, Gravity.TOP | Gravity.RIGHT,

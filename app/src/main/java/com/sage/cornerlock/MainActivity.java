@@ -35,6 +35,7 @@ public class MainActivity extends Activity {
     private ImageView preview;
     private Button chooseBtn;
     private Button lockBtn;
+    private final Button[] sizeBtns = new Button[Lock.SIZE_DP.length];
     private TextView status;
 
     private final Runnable refresher = new Runnable() {
@@ -62,7 +63,7 @@ public class MainActivity extends Activity {
         root.addView(title);
 
         TextView sub = new TextView(this);
-        sub.setText("Puts this image in all four corners of your screen for 24 hours.");
+        sub.setText("Puts this image in all four corners of your screen for 24 hours. The preview below is the real size.");
         sub.setGravity(Gravity.CENTER);
         sub.setPadding(0, Math.round(8 * d), 0, Math.round(24 * d));
         root.addView(sub);
@@ -70,6 +71,20 @@ public class MainActivity extends Activity {
         preview = new ImageView(this);
         int ps = Math.round(140 * d);
         root.addView(preview, new LinearLayout.LayoutParams(ps, ps));
+
+        LinearLayout sizes = new LinearLayout(this);
+        sizes.setOrientation(LinearLayout.HORIZONTAL);
+        for (int i = 0; i < sizeBtns.length; i++) {
+            final int idx = i;
+            Button b = new Button(this);
+            b.setOnClickListener(v -> { Lock.setSizeIndex(this, idx); refresh(); });
+            sizes.addView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            sizeBtns[i] = b;
+        }
+        LinearLayout.LayoutParams sizesLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sizesLp.topMargin = Math.round(16 * d);
+        root.addView(sizes, sizesLp);
 
         chooseBtn = new Button(this);
         chooseBtn.setText("Choose image");
@@ -123,6 +138,15 @@ public class MainActivity extends Activity {
         boolean locked = Lock.active(this);
         chooseBtn.setEnabled(!locked);
         lockBtn.setEnabled(!locked);
+        float d = getResources().getDisplayMetrics().density;
+        int sel = Lock.sizeIndex(this);
+        int px = Math.round(Lock.SIZE_DP[sel] * d);   // preview at the real on-screen size
+        ViewGroup.LayoutParams plp = preview.getLayoutParams();
+        if (plp.width != px) { plp.width = px; plp.height = px; preview.setLayoutParams(plp); }
+        for (int i = 0; i < sizeBtns.length; i++) {
+            sizeBtns[i].setText(i == sel ? "\u2713 " + Lock.SIZE_NAMES[i] : Lock.SIZE_NAMES[i]);
+            sizeBtns[i].setEnabled(!locked);
+        }
         if (locked) {
             long left = Lock.until(this) - System.currentTimeMillis();
             status.setText("Locked. " + Lock.remainingText(left) + " left.");
