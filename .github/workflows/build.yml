@@ -39,6 +39,9 @@ jobs:
           "frames: $($anim.Frames.Count), delays: $($anim.Delays -join ',')"
           if ($anim.Frames.Count -ne 8) { throw 'Expected 8 frames' }
           if ($anim.Delays[0] -ne 120) { throw 'Expected 120 ms delay' }
-          $still = $load.Invoke($null, @((Resolve-Path windows/image.png).Path))
+          $still = $load.Invoke($null, @((Resolve-Path app/src/main/res/drawable/default_corner.png).Path))
           if ($still.Frames.Count -ne 1) { throw 'Expected 1 frame for PNG' }
+          $face = $load.Invoke($null, @((Resolve-Path windows/image.gif).Path))
+          "default GIF frames: $($face.Frames.Count)"
+          if ($face.Frames.Count -lt 20) { throw 'Default GIF did not load as animated' }
           'OK'

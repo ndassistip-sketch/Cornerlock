@@ -155,7 +155,7 @@ namespace CornerLock
         static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10;
 
-        const int SourceMaxPx = 192;   // frames are kept at most this big
+        const int SourceMaxPx = 256;   // frames are kept at most this big
         const int MaxFrames = 200;
 
         static readonly List<Corner> corners = new List<Corner>();
@@ -332,7 +332,7 @@ namespace CornerLock
             foreach (Screen sc in Screen.AllScreens)
             {
                 Rectangle r = sc.Bounds;
-                int box = Math.Max(32, (int)Math.Round(r.Height * 0.045));   // about 48 px on a 1080p screen
+                int box = Math.Max(48, (int)Math.Round(r.Height * 0.07));    // about 75 px on a 1080p screen
                 int m = Math.Max(6, box / 6);
                 // Clockwise from top-left, so with 2 images each pair sits on a diagonal.
                 for (int k = 0; k < 4; k++)
@@ -382,7 +382,8 @@ if ($until -ne $null -and $until -gt [datetime]::UtcNow) {
 $here = Split-Path -Parent $PSCommandPath
 $script:chosen = New-Object 'System.Collections.Generic.List[byte[]]'
 $script:streams = New-Object System.Collections.ArrayList   # GIF previews need their streams kept open
-$defaultImage = Join-Path $here 'image.png'
+$defaultImage = Join-Path $here 'image.gif'
+if (-not (Test-Path $defaultImage)) { $defaultImage = Join-Path $here 'image.png' }
 if (Test-Path $defaultImage) { $script:chosen.Add([IO.File]::ReadAllBytes($defaultImage)) }
 
 [System.Windows.Forms.Application]::EnableVisualStyles()

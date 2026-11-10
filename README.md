@@ -40,7 +40,7 @@ Notes
 
 ## Windows
 
-1. Keep `CornerLock.bat`, `CornerLock.ps1` and `image.png` together in one folder.
+1. Keep `CornerLock.bat`, `CornerLock.ps1` and `image.gif` together in one folder. `image.gif` is the default: the Holy Face icon with eyes that look around. On the PC the corners are a bit bigger than on the phone.
 2. Double-click `CornerLock.bat`.
 3. "Choose image..." (optional), then "Lock for 24 hours".
 
